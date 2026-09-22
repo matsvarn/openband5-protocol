@@ -136,6 +136,8 @@ void main() {
       final r = parseCommandResponse(cmdResponse(
           Cmd.getDataRange,
           dataRangeBody(
+            rawOldPage: 10,
+            readPage: 20,
             writePage: 30,
             trimPage: 40,
             wrapCount: 3,
@@ -150,7 +152,32 @@ void main() {
         'trim_page': 40, // TrimPage    @ payload[15]
         'wrap_count': 3, // WrapCount   @ payload[19]
         'free_records': 89012, // FreeRecords @ payload[31]
+        'raw_old_page': 10, // RawOldPage @ payload[3]
+        'read_page': 20, // ReadPage   @ payload[7]
       });
+    });
+
+    test('the read cursor decodes: trim_ts and current_read_ts', () {
+      final r = parseCommandResponse(cmdResponse(
+          Cmd.getDataRange,
+          dataRangeBody(
+            trimTs: 1781000000,
+            currentRead: 1782000000,
+          )))!;
+      // The current-read timestamp is where the band's next history drain
+      // resumes — records older than it are unreachable via normal sync.
+      expect(r.decoded['trim_ts'], 1781000000); // body[41] → payload[43]
+      expect(r.decoded['current_read_ts'], 1782000000); // body[49] → [51]
+    });
+
+    test('implausible cursor timestamps emit nothing rather than a 0 epoch',
+        () {
+      final r = parseCommandResponse(cmdResponse(
+          Cmd.getDataRange, dataRangeBody(trimTs: 0, currentRead: 0)))!;
+      expect(r.decoded.containsKey('trim_ts'), isFalse);
+      expect(r.decoded.containsKey('current_read_ts'), isFalse);
+      // A dropped cursor does not take the rest of the reply with it.
+      expect(r.decoded['range_oldest'], 1780000000);
     });
 
     test('a capacity other than the usual one still decodes', () {

@@ -952,6 +952,12 @@ CmdResponse? parseCommandResponse(Uint8List inner,
     // epochs; the real seconds sit at payload[35] and payload[59], both ≡ 3
     // (mod 4), so the grid could never land on either and range_oldest /
     // range_newest were never emitted at all.
+    //
+    // ReadPage (payload[7]) and the current-read timestamp (payload[51]) are
+    // the band's persistent READ cursor — where the next history drain will
+    // resume. Records older than it are unreachable via normal sync: a read
+    // cursor at/above range_oldest while records are still expected means
+    // they were trimmed or skipped, not merely pending.
     final revOk = payload.length > 2 && payload[2] == 1;
     if (revOk && payload.length >= 63) {
       final oldest = u32(payload, 35);
@@ -960,6 +966,12 @@ CmdResponse? parseCommandResponse(Uint8List inner,
         dec['range_oldest'] = oldest;
         dec['range_newest'] = newest;
       }
+      // Same epoch-seconds convention as range_oldest/range_newest: the
+      // subsec u32s at payload[47]/[55] are not decoded.
+      final trim = u32(payload, 43);
+      final currentRead = u32(payload, 51);
+      if (_plausibleUnix(trim)) dec['trim_ts'] = trim;
+      if (_plausibleUnix(currentRead)) dec['current_read_ts'] = currentRead;
     }
     // Ring-buffer backlog telemetry. The trim page and wrap count are the
     // strap's own view of its ring buffer, which is what separates a stalled
@@ -976,6 +988,8 @@ CmdResponse? parseCommandResponse(Uint8List inner,
           'trim_page': u32(payload, 15),
           'wrap_count': u32(payload, 19),
           'free_records': u32(payload, 31),
+          'raw_old_page': u32(payload, 3), // RawOldPage — oldest retained
+          'read_page': u32(payload, 7), // ReadPage — persistent read cursor
         };
       }
     }
