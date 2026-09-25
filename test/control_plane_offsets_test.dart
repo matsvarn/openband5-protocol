@@ -207,6 +207,70 @@ void main() {
           dataRangeBody(writePage: 200000, totalPages: 131072)))!;
       expect(r.decoded.containsKey('pages_behind'), isFalse);
     });
+
+    // Every field a successful reply emits, cursor included. The body used
+    // below decodes to all of them, so a missing key means the gate dropped it.
+    const rangeKeys = [
+      'range_oldest',
+      'range_newest',
+      'trim_ts',
+      'current_read_ts',
+      'pages_behind',
+    ];
+    const expectedPages = {
+      'written': 30,
+      'used': 4567,
+      'capacity': 131072,
+      'trim_page': 40,
+      'wrap_count': 3,
+      'free_records': 89012,
+      'raw_old_page': 10,
+      'read_page': 20,
+    };
+
+    test('gen5: a non-success outer status emits no range, backlog or cursor',
+        () {
+      // A failure reply leaves the body as the buffer held it after the last
+      // good read, so a plausible body with revision 1 is not evidence of a
+      // current one. A stale read cursor would look like the band's drain
+      // position went backwards or stalled.
+      for (final status in [0, 2, 3]) {
+        final r = parseCommandResponse(
+            cmdResponse(Cmd.getDataRange, dataRangeBody(), status: status),
+            profile: BandProfile.gen5)!;
+        for (final k in rangeKeys) {
+          expect(r.decoded.containsKey(k), isFalse,
+              reason: 'status=$status key=$k');
+        }
+      }
+    });
+
+    test('gen5: a success outer status decodes every field', () {
+      final r = parseCommandResponse(
+          cmdResponse(Cmd.getDataRange, dataRangeBody(), status: 1),
+          profile: BandProfile.gen5)!;
+      expect(r.decoded['range_oldest'], 1780000000);
+      expect(r.decoded['range_newest'], 1786000000);
+      expect(r.decoded['trim_ts'], 1781000000);
+      expect(r.decoded['current_read_ts'], 1782000000);
+      expect(r.decoded['pages_behind'], expectedPages);
+    });
+
+    test('gen4 stays ungated on outer status', () {
+      // Same policy as GET_CLOCK: the gen4 status byte is unconfirmed, so a
+      // gate there could silently stop every range read instead.
+      for (final status in [0, 1, 2, 3]) {
+        final r = parseCommandResponse(
+            cmdResponse(Cmd.getDataRange, dataRangeBody(), status: status))!;
+        expect(r.decoded['range_oldest'], 1780000000, reason: 'status=$status');
+        expect(r.decoded['range_newest'], 1786000000, reason: 'status=$status');
+        expect(r.decoded['trim_ts'], 1781000000, reason: 'status=$status');
+        expect(r.decoded['current_read_ts'], 1782000000,
+            reason: 'status=$status');
+        expect(r.decoded['pages_behind'], expectedPages,
+            reason: 'status=$status');
+      }
+    });
   });
 
   // The alarm/haptics status byte: the SET and RUN
