@@ -958,8 +958,17 @@ CmdResponse? parseCommandResponse(Uint8List inner,
     // resume. Records older than it are unreachable via normal sync: a read
     // cursor at/above range_oldest while records are still expected means
     // they were trimmed or skipped, not merely pending.
+    //
+    // Status-gated like the clock read above: a failure reply leaves the body
+    // unpopulated, so a stale revision byte and stale-but-plausible range,
+    // backlog and read-cursor values from a prior successful read would
+    // otherwise be reported as current. A stale cursor is the worst of these:
+    // it makes the band's drain position look stalled or rewound. This opcode
+    // is shared by both profiles (see commands.dart), so gen4 is deliberately
+    // left ungated for the clock read's unconfirmed-status-byte reason.
+    final statusOk = !profile.isGen5 || status == 1;
     final revOk = payload.length > 2 && payload[2] == 1;
-    if (revOk && payload.length >= 63) {
+    if (statusOk && revOk && payload.length >= 63) {
       final oldest = u32(payload, 35);
       final newest = u32(payload, 59);
       if (_plausibleUnix(oldest) && _plausibleUnix(newest) && oldest <= newest) {
@@ -977,7 +986,7 @@ CmdResponse? parseCommandResponse(Uint8List inner,
     // strap's own view of its ring buffer, which is what separates a stalled
     // offload from an idle one. Degrades safely: implausible values emit
     // nothing at all.
-    if (revOk && payload.length >= 35) {
+    if (statusOk && revOk && payload.length >= 35) {
       final writePage = u32(payload, 11);
       final capacity = u32(payload, 23); // TotalPages
       if (capacity > 0 && writePage <= capacity) {
