@@ -10,3 +10,6 @@ dist/
 .packages
 pubspec.lock
 build/
+
+# Amp orb portal metadata
+.amp/portals/*

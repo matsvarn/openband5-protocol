@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+SECONDS=0
+
+# Match the minimum SDK exercised by CI.
+dart_version=3.5.0
+sdk_dir="$HOME/.local/share/openstrap/dart-$dart_version"
+sdk_sha256=011a1dd6ff4e0bb4a168f7b4e13063514fbc255dc52d1ad660bf5a28773e9773
+
+missing_packages=()
+for tool in curl unzip; do
+  if ! command -v "$tool" >/dev/null; then
+    missing_packages+=("$tool")
+  fi
+done
+if ((${#missing_packages[@]})); then
+  sudo apt-get update
+  sudo apt-get install -y "${missing_packages[@]}"
+fi
+
+if [[ ! -x "$sdk_dir/dart-sdk/bin/dart" ]]; then
+  echo "Installing Dart $dart_version"
+  download_dir=$(mktemp -d)
+  trap 'rm -rf "$download_dir"' EXIT
+  curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+    "https://storage.googleapis.com/dart-archive/channels/stable/release/$dart_version/sdk/dartsdk-linux-x64-release.zip" \
+    -o "$download_dir/dart.zip"
+  echo "$sdk_sha256  $download_dir/dart.zip" | sha256sum --check
+  unzip -q "$download_dir/dart.zip" -d "$download_dir"
+  mkdir -p "$sdk_dir"
+  mv "$download_dir/dart-sdk" "$sdk_dir/"
+fi
+
+# Agents and supervised services start in non-interactive login shells.
+profile_marker="# OpenStrap orb Dart SDK"
+touch "$HOME/.bash_profile"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile"; then
+  cat >> "$HOME/.bash_profile" <<'PROFILE'
+
+# OpenStrap orb Dart SDK
+export PATH="$HOME/.local/share/openstrap/dart-3.5.0/dart-sdk/bin:$PATH"
+PROFILE
+fi
+export PATH="$sdk_dir/dart-sdk/bin:$PATH"
+dart --version
+echo "Dart ready after ${SECONDS}s; resolving dependencies"
+dart pub get
+echo "Orb setup finished in ${SECONDS}s"
