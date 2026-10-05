@@ -59,6 +59,12 @@ dart analyze
 dart test
 ```
 
+For a fresh clone or T3 worktree, `bash scripts/setup.sh` prepares dependencies
+from any working directory. `bash scripts/setup.sh --check` also runs the analyzer
+with fatal info diagnostics and the full test suite with two workers. Setup uses
+the installed Dart SDK and preserves this checkout's ignored lockfile after its
+first resolution. See AGENTS.md for SDK selection and importing the T3 actions.
+
 Two things guard every change:
 
 - **`decode_parity_cases.json`** — 2934 cases checked against the frozen
