@@ -12,7 +12,7 @@
     {
       "name": "Check",
       "command": "bash scripts/setup.sh --check",
-      "icon": "check",
+      "icon": "test",
       "runOnWorktreeCreate": false,
       "async": false
     }
